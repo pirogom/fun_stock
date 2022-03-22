@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="kr">
+
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Cache-Control" content="no-cache">
+  <meta http-equiv="Expires" content="-1">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>피로곰TV - FunStock</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/spectre.css/dist/spectre.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/spectre.css/dist/spectre-exp.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/spectre.css/dist/spectre-icons.min.css">
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+
+
+  <link rel="stylesheet" href="jquery.stickytable.min.css">
+  <script src="jquery.stickytable.min.js"></script>
+
+  <style>
+    .ui-title {
+      font-size: 32px;
+      font-weight: bold;
+      text-align: right;
+    }
+
+    .ui-value {
+      font-size: 24px;
+      font-weight: bold;
+      width:25%;
+      text-align: center;
+    }
+
+    .ui-value-blue {
+      font-size: 24px;
+      font-weight: bold;
+      color: blue;
+      width:25%;    
+      text-align: center;  
+    }
+
+    .ui-value-red {
+      font-size: 24px;
+      font-weight: bold;
+      color: red;
+      width:25%;      
+      text-align: center;
+    }
+
+    .ui-head-td{
+      background-color: #e3e3e3;
+      font-size: 24px;
+      font-weight: bold;
+      width:25%;  
+      text-align: center;
+    }
+
+    .ui-trade-div {
+      position: absolute;
+      width: 1135px;
+      height: 1050px;
+      top: 40px;
+      left: 780px;
+      display: block;
+      border: 1px solid black;
+      background-color: rgba(255, 255, 255, 0.5);
+    }
+
+    .ui-info-div {
+      position: absolute;
+      width: 740px;
+      height: 410px;
+      top: 680px;
+      left: 20px;
+      display: block;
+      background-color: rgba(255, 255, 255, 0.5);
+    }
+  </style>
+
+  <script>
+
+    function comma(x) {
+      return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+
+    var tradeData = {
+      avgPrice: 0,
+      qty: 0,
+      amount: 0,
+      profit: 0,
+      havDays: 0,
+      highAmount: 0,
+      highDays: 0,
+      highProfit: 0,
+      totalDays: 0,
+    }
+    var procInterval = 50; // 인터발
+
+    var jcode = "005930";
+    var localPort = 30301;
+    var barData = null;
+    var maxCandle = 20;
+    var currCandle = 0;
+    var profitPer = 1.06;   // 3%
+
+    var divDay = "2018/05/04";    // 액면분할일
+    var divMulti = 50;            // 분할 배율
+
+
+    var chart;
+    var options;
+    var intervalVar = null;
+
+
+        /**
+        * addTradeList
+        **/
+          function addTradeList(tDate, tAvgPrice, tQty, tOrdPrice, tProfit, tProfitPer, tHavDays, tAmount) {
+
+            var oldBody = $('#ui-trade-list-body').html();
+
+            var oldBodySplit = oldBody.split("<tr>");
+
+            if (oldBodySplit.length > 17) {
+              var trimArr = oldBodySplit.splice(0, 17);
+              oldBody = trimArr.join();
+            }
+
+            var html = "";
+
+            html += "<tr>";
+            html += "<td style='font-size:22px;font-weight:bold;'>" + tDate + "</td>";
+            html += "<td align=right style='font-size:22px;font-weight:bold;'>" + comma(tAvgPrice) + "</td>";
+            html += "<td align=right style='font-size:22px;font-weight:bold;'>" + comma(tQty) + "</td>";
+            html += "<td align=right style='font-size:22px;font-weight:bold;'>" + comma(tAmount) + "</td>";
+            html += "<td align=right style='font-size:22px;font-weight:bold;'>" + comma(tOrdPrice) + "</td>";
+
+            if (tProfit > 0) {
+              html += "<td align=right style='color:red;font-size:22px;font-weight:bold;'>" + comma(tProfit) + "</td>";
+              html += "<td align=right style='color:red;font-size:22px;font-weight:bold;'>" + tProfitPer.toFixed(2) + "%</td>";
+            } else if (tProfit < 0) {
+              html += "<td align=right style='color:blue;font-size:22px;font-weight:bold;'>" + comma(tProfit) + "</td>";
+              html += "<td align=right style='color:blue;font-size:22px;font-weight:bold;'>" + tProfitPer.toFixed(2) + "%</td>";
+            } else {
+              html += "<td align=right style='font-size:22px;font-weight:bold;'>" + comma(tProfit) + "</td>";
+              html += "<td align=right style='font-size:22px;font-weight:bold;'>" + tProfitPer.toFixed(2) + "%</td>";
+            }
+
+            html += "<td align=right style='font-size:22px;font-weight:bold;'>" + comma(tHavDays) + "</td>";
+            html += "</tr>";
+
+            $('#ui-trade-list-body').html(html + oldBody);
+          }
+
+    /**
+    * drawChart
+    **/
+    function drawChart() {
+      var options = {
+        title: '삼성전자(005930) / 평균가 미만 종가매수 / 종가 6%익절',
+        legend: 'none',
+        chartArea: {
+          backgroundColor: {
+            fill: '#FFFFFF',
+            fillOpacity: 0.1
+          },
+          top: 100,
+          left: 150,
+        },
+        backgroundColor: {
+          fill: '#FFFFFF',
+          fillOpacity: 0.0
+        },
+        candlestick: {
+          fallingColor: { stroke: '#000000', strokeWidth: 1, fill: 'blue' }, // red
+          risingColor: { stroke: '#000000', strokeWidth: 1, fill: 'red' }   // green
+        }
+      };
+
+      chart = new google.visualization.CandlestickChart(document.getElementById('chart_div'));
+
+      $.ajax({
+        type: "GET",
+        url: "http://127.0.0.1:" + localPort + "/" + jcode + ".dat",
+        success: function (res) {
+          barData = JSON.parse(res);
+
+          intervalVar = setInterval(function () {
+            var data = new google.visualization.DataTable();
+            data.addColumn('string', 'Date');
+            data.addColumn('number', 'Low');
+            data.addColumn('number', 'Open');
+            data.addColumn('number', 'Close');
+            data.addColumn('number', 'High');
+            //            data.addColumn('number','Date');
+
+            for (var i = currCandle - maxCandle; i <= currCandle; i++) {
+              if (i >= 0) {
+                data.addRow([barData[i].Date, barData[i].Low, barData[i].Open, barData[i].Close, barData[i].High]);
+              }
+            }
+
+            chart.draw(data, options);
+
+            if (divDay != "" && divDay == barData[currCandle].Date && divMulti > 0) {
+              if (tradeData.qty > 0) {
+                tradeData.qty = tradeData.qty * divMulti;
+                tradeData.avgPrice = parseInt(tradeData.amount / tradeData.qty);
+              }
+            }
+
+            // 매수 매도처리
+            var ordPrice = barData[currCandle].Close;
+            if (tradeData.qty > 0 && (parseInt(tradeData.avgPrice) * profitPer) < ordPrice) {
+
+              var sellProfit = (ordPrice * parseInt(tradeData.qty)) - parseInt(tradeData.amount);
+              var sellProfitPer = (sellProfit / tradeData.amount) * 100.0;
+
+              addTradeList(barData[currCandle].Date, tradeData.avgPrice, tradeData.qty, ordPrice, sellProfit, sellProfitPer, tradeData.havDays, tradeData.amount);
+
+              tradeData.profit += parseInt(sellProfit);
+
+              tradeData.qty = 0;
+              tradeData.avgPrice = 0;
+              tradeData.havDays = 0;
+              tradeData.amount = 0;
+
+              if (tradeData.highProfit < sellProfit) {
+                tradeData.highProfit = sellProfit;
+              }
+
+            } else if (tradeData.qty == 0 || (tradeData.qty > 0 && tradeData.avgPrice > ordPrice)) {
+              tradeData.amount += ordPrice;
+              tradeData.qty++;
+              tradeData.avgPrice = parseInt(parseInt(tradeData.amount) / parseInt(tradeData.qty));
+              tradeData.havDays++;
+
+              if (tradeData.highAmount < tradeData.amount) {
+                tradeData.highAmount = tradeData.amount;
+              }
+              if (tradeData.highDays < tradeData.havDays) {
+                tradeData.highDays = tradeData.havDays;
+              }
+            }
+
+            tradeData.totalDays++;
+
+            $('#ui-curr-date').html(barData[currCandle].Date);
+
+            $('#ui-price').html(comma(ordPrice));
+            $('#ui-avgprice').html(comma(tradeData.avgPrice));
+            $('#ui-qty').html(comma(tradeData.qty));
+            $('#ui-amount').html(comma(tradeData.amount));
+            $('#ui-profit').html(comma(tradeData.profit));
+            $('#ui-have-days').html(comma(tradeData.havDays));
+            $('#ui-high-profit').html(comma(tradeData.highProfit));
+            $('#ui-high-amount').html(comma(tradeData.highAmount));
+            $('#ui-high-days').html(comma(tradeData.highDays));
+            $('#ui-total-days').html(comma(tradeData.totalDays));
+
+            if (tradeData.qty > 0) {
+              var currProfit = (ordPrice * parseInt(tradeData.qty)) - parseInt(tradeData.amount);
+              var currProfitPer = (currProfit / tradeData.amount) * 100.0;
+
+              $('#ui-curr-profit').html(comma(currProfit));
+              $('#ui-curr-profit-per').html(currProfitPer.toFixed(2));
+              if (currProfit > 0) {
+                $('#ui-curr-profit').removeClass('ui-value');
+                $('#ui-curr-profit').removeClass('ui-value-blue');
+                $('#ui-curr-profit').addClass('ui-value-red');
+              } else if (currProfit < 0) {
+                $('#ui-curr-profit').removeClass('ui-value');
+                $('#ui-curr-profit').removeClass('ui-value-red');
+                $('#ui-curr-profit').addClass('ui-value-blue');
+              } else {
+                $('#ui-curr-profit').removeClass('ui-value-red');
+                $('#ui-curr-profit').removeClass('ui-value-blue');
+                $('#ui-curr-profit').addClass('ui-value');
+              }
+
+              if (currProfitPer > 0) {
+                $('#ui-curr-profit-per').removeClass('ui-value');
+                $('#ui-curr-profit-per').removeClass('ui-value-blue');
+                $('#ui-curr-profit-per').addClass('ui-value-red');
+              } else if (currProfitPer < 0) {
+                $('#ui-curr-profit-per').removeClass('ui-value');
+                $('#ui-curr-profit-per').removeClass('ui-value-red');
+                $('#ui-curr-profit-per').addClass('ui-value-blue');
+              } else {
+                $('#ui-curr-profit-per').removeClass('ui-value-red');
+                $('#ui-curr-profit-per').removeClass('ui-value-blue');
+                $('#ui-curr-profit-per').addClass('ui-value');
+              }
+
+            } else {
+              $('#ui-curr-profit').html("0");
+              $('#ui-curr-profit-per').html("0");
+
+              $('#ui-curr-profit-per').removeClass('ui-value-red');
+              $('#ui-curr-profit-per').removeClass('ui-value-blue');
+              $('#ui-curr-profit-per').addClass('ui-value');
+
+              $('#ui-curr-profit').removeClass('ui-value-red');
+              $('#ui-curr-profit').removeClass('ui-value-blue');
+              $('#ui-curr-profit').addClass('ui-value');
+            }
+
+            // end of 매수 매도처리
+
+            if (currCandle < barData.length) {
+              currCandle++;
+            } else {
+              if (intervalVar != null) {
+                clearInterval(intervalVar);
+              }
+            }
+
+          }, procInterval);
+
+        },
+        error: function () {
+          alert("데이터 수신 실패");
+        },
+      });
+    }
+
+
+    //////////////////////////////////////////////////////////////////////////
+    // 초기화 함수들( 이벤트 처리기 포함 )
+    /////////////////////////////////////////////////////////////////////////
+    $(function () {
+      google.charts.load('current', { 'packages': ['corechart'] });
+      google.charts.setOnLoadCallback(drawChart);
+    });
+
+
+
+  </script>
+
+</head>
+
+<body style='background-image: url("bg.png");'>
+  <div id="chart_div" style="width: 900px; height: 800px;"></div>
+  <div class='ui-info-div'>
+
+    <table style='width:100%;height:100%;'>
+      <tr>
+        <td class='ui-head-td'>일자</td><td class='ui-value' id='ui-curr-date'></td>
+        <td class='ui-head-td'>평균가</td><td class='ui-value' id='ui-avgprice'></td>
+      </tr>
+      <tr>
+        <td class='ui-head-td'>현재가</td><td class='ui-value' id='ui-price'></td>
+        <td class='ui-head-td'>수량</td><td class='ui-value' id='ui-qty'></td>
+      </tr>
+      <tr>
+        <td class='ui-head-td'>수익</td><td class='ui-value' id='ui-curr-profit'></td>
+        <td class='ui-head-td'>수익률</td><td class='ui-value' id='ui-curr-profit-per'></td>
+      </tr>
+      <tr>
+        <td class='ui-head-td'>총금액</td><td class='ui-value' id='ui-amount'></td>
+        <td class='ui-head-td'>총수익</td><td class='ui-value' id='ui-profit'></td>
+      </tr>
+      <tr>
+        <td class='ui-head-td'>보유일수</td><td class='ui-value' id='ui-have-days'></td>
+        <td class='ui-head-td'>최대보유일수</td><td class='ui-value' id='ui-high-days'></td>
+      </tr>
+
+      <tr>
+        <td class='ui-head-td'>최대수익</td><td class='ui-value' id='ui-high-profit'></td>
+        <td class='ui-head-td'>최대매수금</td><td class='ui-value' id='ui-high-amount'></td>
+      </tr>
+      <tr>
+        <td class='ui-head-td'>총거래일수</td><td class='ui-value' id='ui-total-days'></td>
+        <td class='ui-head-td'></td><td class='ui-value'></td>
+      </tr>
+
+    </table>
+
+  </div>
+
+
+
+  <!--테이블-->
+
+  <div class='ui-trade-div'>
+    <div class="sticky-table sticky-headers sticky-ltr-cells">
+      <table class="table table-striped">
+        <thead>
+          <tr class="sticky-row">
+            <th style='font-size:22px;font-weight:bold;'>일자</th>
+            <th align=right style='font-size:22px;font-weight:bold;'>평균가</th>
+            <th align=right style='font-size:22px;font-weight:bold;'>수량</th>
+            <th align=right style='font-size:22px;font-weight:bold;'>총금액</th>
+            <th align=right style='font-size:22px;font-weight:bold;'>매도가</th>
+            <th align=right style='font-size:22px;font-weight:bold;'>수익</th>
+            <th align=right style='font-size:22px;font-weight:bold;'>수익률(%)</th>
+            <th align=right style='font-size:22px;font-weight:bold;'>보유일수</th>
+          </tr>
+        </thead>
+        <tbody id='ui-trade-list-body'>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</body>
+
+</html>
